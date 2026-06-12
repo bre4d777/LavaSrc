@@ -13,10 +13,12 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public abstract class MirroringAudioTrack extends ExtendedAudioTrack {
 
 	private static final Logger log = LoggerFactory.getLogger(MirroringAudioTrack.class);
+	private static final int LOAD_TIMEOUT_SECONDS = 30;
 
 	protected final MirroringAudioSourceManager sourceManager;
 
@@ -30,33 +32,71 @@ public abstract class MirroringAudioTrack extends ExtendedAudioTrack {
 	@Override
 	public void process(LocalAudioTrackExecutor executor) throws Exception {
 		if (this.isPreview) {
-			if (this.previewUrl == null) {
-				throw new FriendlyException("No preview url found", FriendlyException.Severity.COMMON, new IllegalArgumentException());
-			}
-			try (var httpInterface = this.sourceManager.getHttpInterface()) {
-				try (var stream = new PersistentHttpStream(httpInterface, new URI(this.previewUrl), this.trackInfo.length)) {
-					processDelegate(createAudioTrack(this.trackInfo, stream), executor);
-				}
-			}
+			processPreview(executor);
 			return;
 		}
-		var track = this.sourceManager.getResolver().apply(this);
 
-		if (track instanceof AudioPlaylist) {
-			var tracks = ((AudioPlaylist) track).getTracks();
-			if (tracks.isEmpty()) {
-				throw new TrackNotFoundException("No tracks found in playlist or search result for track");
+		AudioItem resolvedTrack = null;
+		try {
+			resolvedTrack = this.sourceManager.getResolver().apply(this);
+		} catch (Exception e) {
+			log.error("Failed to resolve mirror for track: {} by {}", 
+				this.trackInfo.title, this.trackInfo.author, e);
+			throw new TrackNotFoundException("Mirror resolution failed: " + e.getMessage());
+		}
+
+		if (resolvedTrack == null || resolvedTrack == AudioReference.NO_TRACK) {
+			throw new TrackNotFoundException("No mirror found for track: " + this.trackInfo.title);
+		}
+
+		InternalAudioTrack playableTrack = extractPlayableTrack(resolvedTrack);
+		if (playableTrack == null) {
+			throw new TrackNotFoundException("Could not extract playable track from mirror result");
+		}
+
+		playableTrack.setUserData(this.getUserData());
+		
+		log.debug("Playing mirror: {} - {} from {} (original: {} by {})", 
+			playableTrack.getInfo().title,
+			playableTrack.getInfo().author,
+			playableTrack.getSourceManager().getSourceName(),
+			this.trackInfo.title,
+			this.trackInfo.author
+		);
+
+		processDelegate(playableTrack, executor);
+	}
+
+	private void processPreview(LocalAudioTrackExecutor executor) throws Exception {
+		if (this.previewUrl == null || this.previewUrl.isEmpty()) {
+			throw new FriendlyException("No preview URL available", 
+				FriendlyException.Severity.COMMON, new IllegalArgumentException());
+		}
+
+		try (var httpInterface = this.sourceManager.getHttpInterface()) {
+			try (var stream = new PersistentHttpStream(httpInterface, new URI(this.previewUrl), this.trackInfo.length)) {
+				processDelegate(createAudioTrack(this.trackInfo, stream), executor);
 			}
-			track = tracks.get(0);
+		} catch (Exception e) {
+			log.error("Failed to process preview from URL: {}", this.previewUrl, e);
+			throw new FriendlyException("Failed to load preview", 
+				FriendlyException.Severity.COMMON, e);
 		}
-		if (track instanceof InternalAudioTrack) {
-			((InternalAudioTrack) track).setUserData(this.getUserData());
-			var internalTrack = (InternalAudioTrack) track;
-			log.debug("Loaded track mirror from {} {}({}) ", internalTrack.getSourceManager().getSourceName(), internalTrack.getInfo().title, internalTrack.getInfo().uri);
-			processDelegate(internalTrack, executor);
-			return;
+	}
+
+	private InternalAudioTrack extractPlayableTrack(AudioItem item) {
+		if (item instanceof InternalAudioTrack) {
+			return (InternalAudioTrack) item;
 		}
-		throw new TrackNotFoundException("No mirror found for track");
+
+		if (item instanceof AudioPlaylist) {
+			var tracks = ((AudioPlaylist) item).getTracks();
+			if (!tracks.isEmpty() && tracks.get(0) instanceof InternalAudioTrack) {
+				return (InternalAudioTrack) tracks.get(0);
+			}
+		}
+
+		return null;
 	}
 
 	@Override
@@ -65,34 +105,40 @@ public abstract class MirroringAudioTrack extends ExtendedAudioTrack {
 	}
 
 	public AudioItem loadItem(String query) {
-		var cf = new CompletableFuture<AudioItem>();
+		CompletableFuture<AudioItem> future = new CompletableFuture<>();
+		
 		this.sourceManager.getAudioPlayerManager().loadItem(query, new AudioLoadResultHandler() {
-
 			@Override
 			public void trackLoaded(AudioTrack track) {
-				log.debug("Track loaded: {}", track.getIdentifier());
-				cf.complete(track);
+				log.trace("Track loaded: {}", track.getIdentifier());
+				future.complete(track);
 			}
 
 			@Override
 			public void playlistLoaded(AudioPlaylist playlist) {
-				log.debug("Playlist loaded: {}", playlist.getName());
-				cf.complete(playlist);
+				log.trace("Playlist loaded: {} ({} tracks)", playlist.getName(), playlist.getTracks().size());
+				future.complete(playlist);
 			}
 
 			@Override
 			public void noMatches() {
-				log.debug("No matches found for: {}", query);
-				cf.complete(AudioReference.NO_TRACK);
+				log.trace("No matches for query: {}", query);
+				future.complete(AudioReference.NO_TRACK);
 			}
 
 			@Override
 			public void loadFailed(FriendlyException exception) {
-				log.debug("Failed to load: {}", query);
-				cf.completeExceptionally(exception);
+				log.warn("Load failed for query: {} - {}", query, exception.getMessage());
+				future.completeExceptionally(exception);
 			}
 		});
-		return cf.join();
+
+		try {
+			return future.get(LOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+		} catch (Exception e) {
+			log.error("Timeout or error loading item: {}", query, e);
+			return AudioReference.NO_TRACK;
+		}
 	}
 
 }
