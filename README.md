@@ -1,3 +1,4 @@
+audiomack and gaana sources are completely taken/copied from https://github.com/notdeltaxd/LavaSrc
 [![](https://img.shields.io/maven-metadata/v?metadataUrl=https%3A%2F%2Fmaven.topi.wtf%2Freleases%2Fcom%2Fgithub%2Ftopi314%2Flavasrc%2Flavasrc%2Fmaven-metadata.xml)](https://maven.topi.wtf/#/releases/com/github/topi314/lavasrc)
 
 # LavaSrc
