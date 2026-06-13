@@ -8,6 +8,7 @@ import com.github.topi314.lavasrc.applemusic.AppleMusicSourceManager;
 import com.github.topi314.lavasrc.deezer.DeezerAudioSourceManager;
 import com.github.topi314.lavasrc.deezer.DeezerAudioTrack;
 import com.github.topi314.lavasrc.flowerytts.FloweryTTSSourceManager;
+import com.github.topi314.lavasrc.gaana.GaanaAudioSourceManager;
 import com.github.topi314.lavasrc.jiosaavn.JioSaavnAudioSourceManager;
 import com.github.topi314.lavasrc.lrclib.LrcLibLyricsManager;
 import com.github.topi314.lavasrc.mirror.DefaultMirroringAudioTrackResolver;
@@ -21,6 +22,7 @@ import com.github.topi314.lavasrc.vkmusic.VkMusicSourceManager;
 import com.github.topi314.lavasrc.yandexmusic.YandexMusicSourceManager;
 import com.github.topi314.lavasrc.youtube.YoutubeSearchManager;
 import com.github.topi314.lavasrc.ytdlp.YtdlpAudioSourceManager;
+import com.github.topi314.lavasrc.audiomack.AudiomackAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import dev.arbjerg.lavalink.api.AudioPlayerManagerConfiguration;
 import org.jetbrains.annotations.NotNull;
@@ -51,6 +53,8 @@ public class LavaSrcPlugin implements AudioPlayerManagerConfiguration, SearchMan
 	private JioSaavnAudioSourceManager jioSaavn;
 	private QobuzAudioSourceManager qobuz;
 	private YtdlpAudioSourceManager ytdlp;
+	private GaanaAudioSourceManager gaana;
+	private AudiomackAudioSourceManager audiomack;
 	private LrcLibLyricsManager lrcLib;
 
 	public LavaSrcPlugin(
@@ -65,6 +69,8 @@ public class LavaSrcPlugin implements AudioPlayerManagerConfiguration, SearchMan
 		YouTubeConfig youTubeConfig,
 		VkMusicConfig vkMusicConfig,
 		TidalConfig tidalConfig,
+        GaanaConfig gaanaConfig,
+		AudiomackConfig audiomackConfig,
 		QobuzConfig qobuzConfig,
 		YtdlpConfig ytdlpConfig,
 		JioSaavnConfig jioSaavnConfig,
@@ -181,6 +187,18 @@ public class LavaSrcPlugin implements AudioPlayerManagerConfiguration, SearchMan
 
 			proxyConfigurationService.configure(this.jioSaavn, jioSaavnConfig.getProxy());
 		}
+	
+		if (sourcesConfig.isGaana()) {
+			this.gaana = new GaanaAudioSourceManager(gaanaConfig.getSearchLimit());
+			proxyConfigurationService.configure(this.gaana, gaanaConfig.getProxy());
+		}
+
+		if (sourcesConfig.isAudiomack()) {
+			this.audiomack = new AudiomackAudioSourceManager(audiomackConfig.getConsumerKey(), audiomackConfig.getConsumerSecret(), audiomackConfig.getAccessToken(), audiomackConfig.getAccessSecret());
+			if (audiomackConfig.getSearchLimit() > 0) {
+				this.audiomack.setSearchLimit(audiomackConfig.getSearchLimit());
+			}
+		}
 	}
 
 	private boolean hasNewYoutubeSource() {
@@ -235,6 +253,14 @@ public class LavaSrcPlugin implements AudioPlayerManagerConfiguration, SearchMan
 		if (this.jioSaavn != null) {
 			log.info("Registering JioSaavn audio source manager...");
 			manager.registerSourceManager(this.jioSaavn);
+		}
+			if (this.gaana != null) {
+			log.info("Registering Gaana audio source manager...");
+			manager.registerSourceManager(this.gaana);
+		}
+		if (this.audiomack != null) {
+			log.info("Registering Audiomack audio source manager...");
+			manager.registerSourceManager(this.audiomack);
 		}
 		return manager;
 	}
@@ -387,6 +413,19 @@ public class LavaSrcPlugin implements AudioPlayerManagerConfiguration, SearchMan
 			}
 			if (ytdlpConfig.getCustomPlaybackArgs() != null) {
 				this.ytdlp.setCustomPlaybackArgs(ytdlpConfig.getCustomPlaybackArgs().toArray(String[]::new));
+			}
+		}
+		var gaanaConfig = config.getGaana();
+		if (gaanaConfig != null && this.gaana != null) {
+			if (gaanaConfig.getSearchLimit() != null && gaanaConfig.getSearchLimit() > 0) {
+				this.gaana.setSearchLimit(gaanaConfig.getSearchLimit());
+			}
+		}
+
+		var audiomackConfig = config.getAudiomack();
+		if (audiomackConfig != null && this.audiomack != null) {
+			if (audiomackConfig.getSearchLimit() != null && audiomackConfig.getSearchLimit() > 0) {
+				this.audiomack.setSearchLimit(audiomackConfig.getSearchLimit());
 			}
 		}
 	}

@@ -10,6 +10,8 @@ data class Config(
     val yandexMusic: YandexMusicConfig? = null,
     val vkMusic: VkMusicConfig? = null,
     val qobuz: QobuzConfig? = null,
+    val gaana: GaanaConfig? = null,
+    val audiomack: AudiomackConfig? = null,
     val ytdlp: YtdlpConfig? = null,
 )
 
@@ -70,4 +72,12 @@ data class YtdlpConfig(
     val playlistLoadLimit: Int? = null,
     val customLoadArgs: List<String>? = null,
     val customPlaybackArgs: List<String>? = null,
+)
+@Serializable
+data class GaanaConfig(
+    val searchLimit: Int? = null,
+)
+@Serializable
+data class AudiomackConfig(
+    val searchLimit: Int? = null,
 )
