@@ -624,9 +624,11 @@ public class SpotifyPartnerApiClient {
 		if (isNullOrBlank(isrc)) {
 			isrc = trackData.get("external_ids").get("isrc").text();
 		}
-		if (isNullOrBlank(isrc) && !isNullOrBlank(identifier)) {
-			isrc = this.fetchIsrcViaSpClientMetadata(identifier);
-		}
+		// commented out until they fix in main branch
+		
+		//if (isNullOrBlank(isrc) && !isNullOrBlank(identifier)) {
+		//	isrc = this.fetchIsrcViaSpClientMetadata(identifier);
+		//}
 
 		return new SpotifyAudioTrack(
 			new AudioTrackInfo(title, author, length, identifier, false, uri, artworkUrl, isrc),
